@@ -1899,6 +1899,11 @@ export default function App() {
   );
   const [hintDismissed, setHintDismissed] = useState(false);
   const showHint = persistHint && !hintDismissed;
+  const [peekDeathId, setPeekDeathId] = useState<string | null>(null);
+  const deathId = state.dead
+    ? `${state.floor}:${state.killCountRun}:${state.logSeq}`
+    : null;
+  const deadPeek = Boolean(state.dead && peekDeathId === deathId);
   const saveTimer = useRef<number | null>(null);
 
   const P = useMemo(() => derive(state), [state]);
@@ -2100,12 +2105,12 @@ export default function App() {
           <div className="flex shrink-0 flex-col items-end gap-1 text-xs">
             <span className="flex items-center gap-1 text-[#e4b84a]" title="야근수당">
               <Coins className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline text-[#c4bba8]">수당</span>
+              <span className="text-[#c4bba8]">수당</span>
               <span className="font-mono">{fmt(state.gold)}</span>
             </span>
             <span className="flex items-center gap-1 text-[#cbb4ff]" title="야근 트라우마">
               <Ghost className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline text-[#c4bba8]">트라우마</span>
+              <span className="text-[#c4bba8]">트라우마</span>
               <span className="font-mono">{fmt(state.trauma)}</span>
             </span>
           </div>
@@ -2278,22 +2283,46 @@ export default function App() {
         </Modal>
       )}
 
-      {state.dead && (
+      {state.dead && deadPeek && (
+        <div className="fixed bottom-[4.25rem] left-1/2 z-40 w-full max-w-3xl -translate-x-1/2 px-3 lg:max-w-5xl">
+          <button
+            type="button"
+            onClick={() => setPeekDeathId(null)}
+            className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#e25b4a]/60 bg-[#3a1512] px-3 py-2 text-sm text-[#f0a090]"
+          >
+            <span>멘탈 붕괴 — 1층으로 돌아가려면 지문을 다시 찍으세요.</span>
+            <span className="shrink-0 font-semibold">회귀</span>
+          </button>
+        </div>
+      )}
+
+      {state.dead && !deadPeek && (
         <Modal>
-          <Skull className="h-8 w-8 text-rose-400" />
+          <Skull className="h-8 w-8 text-[#e25b4a]" />
           <h2 className="mt-2 text-lg font-bold">멘탈 붕괴 — 번아웃 타임루프</h2>
-          <p className="mt-3 text-sm leading-relaxed text-zinc-300">
+          <p className="mt-3 text-sm leading-relaxed text-[#e8e0d2]">
             시야가 금요일 18:00, 퇴근 지문기 앞으로 되감깁니다. 이번 루프에서 쌓인
-            야근 트라우마 <span className="font-mono text-purple-300">{fmt(traumaGain(state))}</span>
+            야근 트라우마{" "}
+            <span className="font-mono text-[#cbb4ff]">{fmt(traumaGain(state))}</span>
             을 들고 1층 로비로 돌아갑니다. 장비·골드·초월 특성은 유지됩니다.
           </p>
           <button
             type="button"
-            onClick={() => dispatch({ type: "REBIRTH" })}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-2.5 text-sm font-semibold text-white"
+            onClick={() => {
+              setPeekDeathId(null);
+              dispatch({ type: "REBIRTH" });
+            }}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#6b4aa8] py-2.5 text-sm font-semibold text-white"
           >
             <RotateCcw className="h-4 w-4" />
             지문을 다시 찍는다
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeekDeathId(deathId)}
+            className="mt-2 w-full rounded-lg border border-[#3d362c] py-2 text-sm text-[#c4bba8]"
+          >
+            가방을 먼저 확인한다
           </button>
         </Modal>
       )}
@@ -2411,10 +2440,9 @@ function CombatView({
         <div className="office-card rounded-2xl border border-[#3dcc8a]/40 p-3 text-sm leading-relaxed text-[#e8e0d2]">
           <p className="font-semibold text-[#3dcc8a]">엘리베이터 안내</p>
           <p className="mt-1">
-            <strong className="text-[#e4b84a]">등반</strong>은 처치할 때마다 다음
-            층으로 올라갑니다. <strong className="text-[#e4b84a]">파밍</strong>은
-            이 층에서 야근수당과 장비를 모읍니다. 전투는 자동이고, 스킬은 필요할
-            때만 직접 누르면 됩니다.
+            <strong className="text-[#e4b84a]">등반</strong>은 다음 층,{" "}
+            <strong className="text-[#e4b84a]">파밍</strong>은 이 층에서 수당·장비를
+            모읍니다. 전투는 자동입니다.
           </p>
           <button
             type="button"
