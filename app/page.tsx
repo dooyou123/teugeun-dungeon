@@ -31,6 +31,9 @@ import {
   Trash2,
   Sparkles,
   Fingerprint,
+  Clock,
+  MessageSquare,
+  Building2,
 } from "lucide-react";
 
 /* =========================================================
@@ -177,7 +180,8 @@ type Action =
 
 const SAVE_KEY = "kimdaeri-overtime-tower-v1";
 const INV_CAP = 48;
-const LOG_CAP = 8;
+const LOG_CAP = 14;
+const HINT_KEY = "kimdaeri-ux-hint-v1";
 const BASE_TURN = 1350;
 
 const DIFF_MULT: Record<Difficulty, number> = {
@@ -195,10 +199,10 @@ const DIFF_LABEL: Record<Difficulty, string> = {
 };
 
 const DIFF_STYLE: Record<Difficulty, string> = {
-  normal: "bg-zinc-800 text-zinc-200 border-zinc-600",
-  hard: "bg-amber-950 text-amber-300 border-amber-600",
-  hell: "bg-rose-950 text-rose-300 border-rose-500",
-  hq: "bg-purple-950 text-purple-300 border-purple-500",
+  normal: "bg-[#2a2722] text-[#f4efe6] border-[#5a5348]",
+  hard: "bg-[#3a2e12] text-[#e4b84a] border-[#a07c22]",
+  hell: "bg-[#3a1512] text-[#f0a090] border-[#e25b4a]",
+  hq: "bg-[#241838] text-[#cbb4ff] border-[#7c5cbf]",
 };
 
 const GRADE_META: Record<
@@ -1815,14 +1819,17 @@ function Bar({
   const pct = max > 0 ? clamp((value / max) * 100, 0, 100) : 0;
   return (
     <div className="min-w-0">
-      <div className="mb-0.5 flex justify-between gap-2 text-[10px] uppercase tracking-wide text-zinc-400">
-        <span>{label}</span>
-        <span className="font-mono text-zinc-200">
+      <div className="mb-1 flex justify-between gap-2 text-xs text-[#c4bba8]">
+        <span className="font-medium">{label}</span>
+        <span className="font-mono text-[#f4efe6]">
           {fmt(Math.max(0, value))}/{fmt(max)}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
-        <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+      <div className="h-2.5 overflow-hidden rounded-full bg-black/40 ring-1 ring-[#3d362c]">
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 ${color}`}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -1836,14 +1843,14 @@ function Modal({
   onClose?: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-3 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-3 sm:items-center">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
         aria-label="닫기"
         onClick={onClose}
       />
-      <div className="relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl">
+      <div className="office-card relative z-10 max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl p-5 shadow-2xl">
         {children}
       </div>
     </div>
@@ -1853,6 +1860,19 @@ function Modal({
 function affixText(a: Affix): string {
   return `${AFFIX_META[a.key].name} +${a.value}%`;
 }
+
+function slotLabel(slot: Slot): string {
+  return slot === "weapon" ? "무기" : slot === "armor" ? "방어구" : "장신구";
+}
+
+const LOG_META: Record<LogKind, { sender: string; cls: string }> = {
+  normal: { sender: "김대리", cls: "border-[#e4b84a]/40 bg-[#2a2418]" },
+  crit: { sender: "김대리 · 치명", cls: "border-[#e4b84a] bg-[#3a2e12]" },
+  skill: { sender: "김대리 · 스킬", cls: "border-[#3dcc8a]/50 bg-[#163024]" },
+  drop: { sender: "총무팀", cls: "border-[#e4b84a]/70 bg-[#2f2614]" },
+  system: { sender: "사내공지", cls: "border-[#5a5348] bg-[#1a1916]" },
+  warn: { sender: "팀장", cls: "border-[#e25b4a]/70 bg-[#3a1512]" },
+};
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
@@ -1866,6 +1886,19 @@ export default function App() {
   const [compareId, setCompareId] = useState<string | null>(null);
   const [forgeId, setForgeId] = useState<string | null>(null);
   const [wipeAsk, setWipeAsk] = useState(false);
+  const persistHint = useSyncExternalStore(
+    () => () => {},
+    () => {
+      try {
+        return localStorage.getItem(HINT_KEY) !== "1";
+      } catch {
+        return true;
+      }
+    },
+    () => false,
+  );
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const showHint = persistHint && !hintDismissed;
   const saveTimer = useRef<number | null>(null);
 
   const P = useMemo(() => derive(state), [state]);
@@ -1969,6 +2002,15 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [state.lastStarMsg]);
 
+  const dismissHint = useCallback(() => {
+    setHintDismissed(true);
+    try {
+      localStorage.setItem(HINT_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const theme = getTheme(state.floor);
   const compareItem = compareId ? findItem(state, compareId) : null;
   const forgeItem = forgeId ? findItem(state, forgeId) : null;
@@ -1980,27 +2022,33 @@ export default function App() {
 
   if (!hydrated || !state.booted) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-zinc-950 text-zinc-500">
-        지문 인식 중...
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 text-[#c4bba8]">
+        <div className="fingerprint-pad flex h-20 w-20 items-center justify-center rounded-2xl border border-[#3dcc8a]/50 bg-[#163024]">
+          <Fingerprint className="h-9 w-9 text-[#3dcc8a]" />
+        </div>
+        <p className="text-sm">지문 인식 중...</p>
       </div>
     );
   }
 
   if (!state.started) {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-6 bg-zinc-950 px-5 py-10">
-        <p className="text-xs tracking-[0.25em] text-emerald-400">FRIDAY 18:00</p>
-        <h1 className="text-2xl font-bold leading-snug text-zinc-50 sm:text-3xl">
+      <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-6 px-5 py-10">
+        <div className="flex items-center gap-2 text-xs tracking-[0.28em] text-[#3dcc8a]">
+          <Clock className="h-3.5 w-3.5" />
+          FRIDAY 18:00
+        </div>
+        <h1 className="text-3xl font-bold leading-snug text-[#f4efe6] sm:text-4xl">
           퇴근 찍었는데
           <br />
           던전 1층입니다만?
         </h1>
-        <p className="text-sm text-zinc-400">악덕기업 100층 지옥 탈출기</p>
-        <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 text-sm leading-relaxed text-zinc-300">
+        <p className="text-sm text-[#c4bba8]">악덕기업 100층 지옥 탈출기</p>
+        <div className="office-card space-y-3 rounded-2xl p-4 text-sm leading-relaxed text-[#e8e0d2]">
           <p>
             금요일 18:00, 김대리는 퇴근 지문 리더기에 손가락을 댔습니다.
           </p>
-          <p className="font-medium text-emerald-400">
+          <p className="font-medium text-[#3dcc8a]">
             「삐빅- 야근 모드가 활성화되었습니다.」
           </p>
           <p>
@@ -2011,62 +2059,82 @@ export default function App() {
         <button
           type="button"
           onClick={onStart}
-          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-zinc-950 hover:bg-emerald-400"
+          className="fingerprint-pad flex items-center justify-center gap-2 rounded-xl bg-[#3dcc8a] px-4 py-3.5 text-base font-semibold text-[#102018] hover:bg-[#54d898]"
         >
           <Fingerprint className="h-5 w-5" />
-          야근을 시작한다
+          지문을 찍고 야근을 시작한다
         </button>
       </div>
     );
   }
 
+  const cap = maxFloorOf(state.difficulty);
+  const remain = Math.max(0, cap - state.floor);
+
   return (
-    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col bg-zinc-950">
-      <header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 px-3 py-2 backdrop-blur">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span
-            className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${DIFF_STYLE[state.difficulty]}`}
-          >
-            {DIFF_LABEL[state.difficulty]}
-          </span>
-          <span className="font-mono text-sm text-zinc-100">
-            {state.floor}F
-          </span>
-          <span className="truncate text-xs text-zinc-400">{theme.name}</span>
-          <span className="ml-auto flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1 text-amber-300">
+    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col lg:max-w-5xl">
+      <header className="sticky top-0 z-30 border-b border-[#3d362c] bg-[#141210]/92 px-3 py-2.5 backdrop-blur">
+        <div className="mb-2.5 flex items-center gap-3">
+          <div className="office-card flex min-w-[4.5rem] flex-col items-center rounded-xl px-2 py-1.5">
+            <span className="text-[10px] tracking-[0.2em] text-[#c4bba8]">FLOOR</span>
+            <span className="elevator-led font-mono text-3xl font-semibold leading-none text-[#e4b84a]">
+              {state.floor}
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${DIFF_STYLE[state.difficulty]}`}
+              >
+                {DIFF_LABEL[state.difficulty]}
+              </span>
+              <span className="flex items-center gap-1 text-xs text-[#c4bba8]">
+                <Building2 className="h-3.5 w-3.5" />
+                옥상까지 {remain}층
+              </span>
+            </div>
+            <h1 className="mt-0.5 truncate text-sm font-semibold text-[#f4efe6] sm:text-base">
+              {theme.name}
+            </h1>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1 text-xs">
+            <span className="flex items-center gap-1 text-[#e4b84a]" title="야근수당">
               <Coins className="h-3.5 w-3.5" />
-              {fmt(state.gold)}
+              <span className="hidden sm:inline text-[#c4bba8]">수당</span>
+              <span className="font-mono">{fmt(state.gold)}</span>
             </span>
-            <span className="flex items-center gap-1 text-purple-300">
+            <span className="flex items-center gap-1 text-[#cbb4ff]" title="야근 트라우마">
               <Ghost className="h-3.5 w-3.5" />
-              {fmt(state.trauma)}
+              <span className="hidden sm:inline text-[#c4bba8]">트라우마</span>
+              <span className="font-mono">{fmt(state.trauma)}</span>
             </span>
-          </span>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           <Bar
             label="멘탈"
             value={state.mental}
             max={P.maxHp}
-            color="bg-rose-500"
+            color="bg-[#e25b4a]"
           />
           <Bar
             label="카페인"
             value={state.caffeine}
             max={P.maxCaf}
-            color="bg-sky-400"
+            color="bg-[#7ec8e3]"
           />
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-3 pb-24 pt-3">
+      <main className="flex-1 overflow-y-auto px-3 pb-28 pt-3">
         {tab === "combat" && (
           <CombatView
             state={state}
             P={P}
             theme={theme}
             dispatch={dispatch}
+            showHint={showHint}
+            onDismissHint={dismissHint}
           />
         )}
         {tab === "spec" && <SpecView state={state} P={P} dispatch={dispatch} />}
@@ -2090,22 +2158,24 @@ export default function App() {
         )}
       </main>
 
-      <nav className="fixed bottom-0 left-1/2 z-30 w-full max-w-3xl -translate-x-1/2 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur">
-        <div className="grid grid-cols-4">
+      <nav className="fixed bottom-0 left-1/2 z-30 w-full max-w-3xl -translate-x-1/2 border-t border-[#3d362c] bg-[#141210]/95 backdrop-blur lg:max-w-5xl">
+        <div className="grid grid-cols-4 pb-[max(0.35rem,env(safe-area-inset-bottom))]">
           {(
             [
-              ["combat", "지옥 탈출 전투", Swords],
-              ["spec", "김대리 스펙", Brain],
-              ["bag", "서류 가방", Briefcase],
-              ["loop", "타임루프", RotateCcw],
+              ["combat", "전투", "지옥 탈출 전투", Swords],
+              ["spec", "스펙", "김대리 스펙", Brain],
+              ["bag", "가방", "서류 가방", Briefcase],
+              ["loop", "루프", "타임루프", RotateCcw],
             ] as const
-          ).map(([id, label, Icon]) => (
+          ).map(([id, label, full, Icon]) => (
             <button
               key={id}
               type="button"
+              aria-label={full}
+              aria-current={tab === id ? "page" : undefined}
               onClick={() => setTab(id)}
-              className={`flex flex-col items-center gap-0.5 py-2 text-[10px] ${
-                tab === id ? "text-emerald-400" : "text-zinc-500"
+              className={`flex flex-col items-center gap-0.5 py-2.5 text-xs ${
+                tab === id ? "text-[#3dcc8a]" : "text-[#8a8170]"
               }`}
             >
               <Icon className="h-5 w-5" />
@@ -2116,7 +2186,7 @@ export default function App() {
       </nav>
 
       {state.lastStarMsg && (
-        <div className="pointer-events-none fixed bottom-20 left-1/2 z-40 w-[min(92%,28rem)] -translate-x-1/2 rounded-xl border border-amber-700 bg-zinc-900 px-3 py-2 text-center text-xs text-amber-200 shadow-xl">
+        <div className="pointer-events-none fixed bottom-20 left-1/2 z-40 w-[min(92%,28rem)] -translate-x-1/2 rounded-xl border border-[#a07c22] bg-[#1c1a16] px-3 py-2 text-center text-sm text-[#e4b84a] shadow-xl">
           {state.lastStarMsg}
         </div>
       )}
@@ -2231,9 +2301,9 @@ export default function App() {
       {compareItem && (
         <Modal onClose={() => setCompareId(null)}>
           <h2 className="font-semibold">스펙 비교</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <ItemCard item={equippedSame} title="장착 중" />
-            <ItemCard item={compareItem} title="선택" />
+            <ItemCard item={compareItem} title="선택" peer={equippedSame} />
           </div>
           {compareItem && (
             <div className="mt-4 flex gap-2">
@@ -2308,133 +2378,204 @@ function CombatView({
   P,
   theme,
   dispatch,
+  showHint,
+  onDismissHint,
 }: {
   state: GameState;
   P: Derived;
   theme: Theme;
   dispatch: Dispatch<Action>;
+  showHint: boolean;
+  onDismissHint: () => void;
 }) {
   const e = state.enemy;
   const prefixColor =
     e?.prefix?.tier === "legendary"
-      ? "text-rose-400"
+      ? "text-[#f0a090]"
       : e?.prefix?.tier === "rare"
-        ? "text-sky-400"
+        ? "text-[#7ec8e3]"
         : e?.prefix?.tier === "uncommon"
-          ? "text-emerald-400"
-          : "text-zinc-400";
+          ? "text-[#3dcc8a]"
+          : "text-[#c4bba8]";
+  const logLines = [...state.log].slice(0, LOG_CAP).reverse();
+  const rageVisible = !!e?.isBoss && (e.maxRageTurns ?? 999) < 900;
+  const ragePct =
+    rageVisible && e
+      ? clamp((e.rageTurns / Math.max(1, e.maxRageTurns)) * 100, 0, 100)
+      : 0;
+  const readEvo = state.evo.read === "A" ? SKILL_META.read.a : SKILL_META.read.b;
 
   return (
     <div className="space-y-3">
+      {showHint && (
+        <div className="office-card rounded-2xl border border-[#3dcc8a]/40 p-3 text-sm leading-relaxed text-[#e8e0d2]">
+          <p className="font-semibold text-[#3dcc8a]">엘리베이터 안내</p>
+          <p className="mt-1">
+            <strong className="text-[#e4b84a]">등반</strong>은 처치할 때마다 다음
+            층으로 올라갑니다. <strong className="text-[#e4b84a]">파밍</strong>은
+            이 층에서 야근수당과 장비를 모읍니다. 전투는 자동이고, 스킬은 필요할
+            때만 직접 누르면 됩니다.
+          </p>
+          <button
+            type="button"
+            onClick={onDismissHint}
+            className="mt-2 text-xs font-semibold text-[#3dcc8a] underline"
+          >
+            알겠습니다
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => dispatch({ type: "TOGGLE_CLIMB" })}
-          className={`rounded-lg border px-3 py-1.5 text-xs ${
-            state.climbMode
-              ? "border-emerald-700 bg-emerald-950 text-emerald-300"
-              : "border-amber-700 bg-amber-950 text-amber-300"
-          }`}
-        >
-          {state.climbMode ? "층 등반 모드" : "안전 층 반복 파밍"}
-        </button>
+        <div className="office-card flex rounded-xl p-0.5 text-sm">
+          <button
+            type="button"
+            onClick={() => {
+              if (!state.climbMode) dispatch({ type: "TOGGLE_CLIMB" });
+            }}
+            className={`rounded-lg px-3 py-1.5 ${
+              state.climbMode
+                ? "bg-[#163024] font-semibold text-[#3dcc8a]"
+                : "text-[#8a8170]"
+            }`}
+          >
+            등반
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (state.climbMode) dispatch({ type: "TOGGLE_CLIMB" });
+            }}
+            className={`rounded-lg px-3 py-1.5 ${
+              !state.climbMode
+                ? "bg-[#3a2e12] font-semibold text-[#e4b84a]"
+                : "text-[#8a8170]"
+            }`}
+          >
+            파밍
+          </button>
+        </div>
+        <p className="text-xs text-[#8a8170]">
+          {state.climbMode ? "처치 시 다음 층" : `${state.floor}층에서 반복`}
+        </p>
         <button
           type="button"
           onClick={() => dispatch({ type: "TOGGLE_PAUSE" })}
-          className="ml-auto flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300"
+          className="ml-auto flex items-center gap-1 rounded-lg border border-[#3d362c] px-3 py-1.5 text-sm text-[#e8e0d2]"
         >
           {state.paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
           {state.paused ? "재개" : "일시정지"}
         </button>
-        <span className="text-[11px] text-zinc-500">턴 {P.turnMs}ms</span>
+        <span className="text-xs text-[#8a8170]">턴 {P.turnMs}ms</span>
       </div>
 
-      <section
-        className={`rounded-2xl border bg-zinc-900 p-4 ${
-          e?.enraged ? "rage-glow border-rose-600" : "border-zinc-800"
-        }`}
-      >
-        {!e ? (
-          <p className="text-sm text-zinc-500">다음 악몽을 불러오는 중...</p>
-        ) : (
-          <>
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              {e.isBoss && (
-                <span className="rounded bg-rose-950 px-1.5 py-0.5 text-[10px] text-rose-300">
-                  보스
-                </span>
+      <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+        <section
+          className={`office-card rounded-2xl p-4 ${
+            e?.enraged ? "rage-glow border-[#e25b4a]" : ""
+          }`}
+        >
+          {!e ? (
+            <p className="text-sm text-[#8a8170]">다음 악몽을 불러오는 중...</p>
+          ) : (
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                {e.isBoss && (
+                  <span className="rounded bg-[#3a1512] px-1.5 py-0.5 text-xs text-[#f0a090]">
+                    보스
+                  </span>
+                )}
+                {e.isElite && (
+                  <span className="rounded bg-[#241838] px-1.5 py-0.5 text-xs text-[#cbb4ff]">
+                    정예
+                  </span>
+                )}
+                {e.prefix && (
+                  <span className={`text-xs font-semibold ${prefixColor}`}>
+                    {e.prefix.name}
+                  </span>
+                )}
+                {state.paused && (
+                  <span className="rounded bg-[#2a2722] px-1.5 py-0.5 text-xs text-[#c4bba8]">
+                    탕비실 흡연 중
+                  </span>
+                )}
+              </div>
+              <h2 className="text-xl font-bold leading-snug">{e.displayName}</h2>
+              <p className="mt-1 text-sm text-[#8a8170]">
+                {theme.name} · 공격 {fmt(e.atk)} · 방어 {fmt(effectiveDef(e))}
+              </p>
+              <div className="mt-3">
+                <Bar
+                  label="적 멘탈"
+                  value={Math.max(0, e.hp)}
+                  max={e.maxHp}
+                  color={
+                    e.hp / e.maxHp > 0.5
+                      ? "bg-[#3dcc8a]"
+                      : e.hp / e.maxHp > 0.25
+                        ? "bg-[#e4b84a]"
+                        : "bg-[#e25b4a]"
+                  }
+                />
+              </div>
+              {rageVisible && (
+                <div className="mt-3">
+                  <div className="mb-1 flex items-center justify-between text-xs text-[#f0a090]">
+                    <span className="inline-flex items-center gap-1 font-medium">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      주말특근 광폭화
+                    </span>
+                    <span className="font-mono">{Math.max(0, e.rageTurns)}턴</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-black/40">
+                    <div
+                      className="h-full bg-[#e25b4a] transition-[width]"
+                      style={{ width: `${ragePct}%` }}
+                    />
+                  </div>
+                </div>
               )}
-              {e.isElite && (
-                <span className="rounded bg-purple-950 px-1.5 py-0.5 text-[10px] text-purple-300">
-                  정예
-                </span>
-              )}
-              {e.prefix && (
-                <span className={`text-[11px] font-semibold ${prefixColor}`}>
-                  {e.prefix.name}
-                </span>
-              )}
-              {e.isBoss && (
-                <span className="ml-auto flex items-center gap-1 text-[11px] text-rose-300">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  광폭화 {Math.max(0, e.rageTurns)}턴
-                </span>
-              )}
-            </div>
-            <h2 className="text-lg font-bold leading-snug">{e.displayName}</h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              {theme.name} · ATK {fmt(e.atk)} · DEF {fmt(effectiveDef(e))}
-            </p>
-            <div className="mt-3">
-              <Bar
-                label="적 멘탈"
-                value={Math.max(0, e.hp)}
-                max={e.maxHp}
-                color={e.hp / e.maxHp > 0.5 ? "bg-emerald-500" : e.hp / e.maxHp > 0.25 ? "bg-amber-400" : "bg-rose-500"}
-              />
-            </div>
-          </>
-        )}
-      </section>
-
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3">
-        <p className="mb-2 text-[10px] tracking-widest text-zinc-500">COMBAT LOG</p>
-        <ul className="space-y-1.5">
-          {state.log.length === 0 && (
-            <li className="text-xs text-zinc-600">아직 아무 일도 일어나지 않았습니다.</li>
+            </>
           )}
-          {state.log.slice(0, 5).map((line) => (
-            <li
-              key={line.id}
-              className={`text-xs leading-relaxed ${
-                line.kind === "crit"
-                  ? "text-amber-300"
-                  : line.kind === "skill"
-                    ? "text-sky-300"
-                    : line.kind === "drop"
-                      ? "text-amber-400"
-                      : line.kind === "warn"
-                        ? "text-rose-400"
-                        : line.kind === "system"
-                          ? "text-zinc-500"
-                          : "text-zinc-200"
-              }`}
-            >
-              {line.text}
-            </li>
-          ))}
-        </ul>
-      </section>
+        </section>
 
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <section className="office-card scanlines flex min-h-[220px] flex-col rounded-2xl p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-xs tracking-widest text-[#8a8170]">
+            <MessageSquare className="h-3.5 w-3.5" />
+            사내 메신저
+          </p>
+          <ul className="flex flex-1 flex-col justify-end space-y-1.5">
+            {logLines.length === 0 && (
+              <li className="text-sm text-[#8a8170]">아직 읽지 않은 메시지가 없습니다.</li>
+            )}
+            {logLines.map((line) => {
+              const meta = LOG_META[line.kind];
+              return (
+                <li
+                  key={line.id}
+                  className={`rounded-lg border-l-2 px-2.5 py-1.5 text-sm leading-relaxed ${meta.cls}`}
+                >
+                  <p className="text-[11px] font-semibold opacity-80">{meta.sender}</p>
+                  <p className="text-[#f4efe6]">{line.text}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      </div>
+
+      <section className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {(
           [
-            ["nod", SKILL_META.nod.name],
-            ["shotgun", SKILL_META.shotgun.name],
-            ["resign", SKILL_META.resign.name],
+            ["nod", SKILL_META.nod],
+            ["shotgun", SKILL_META.shotgun],
+            ["resign", SKILL_META.resign],
           ] as const
-        ).map(([key, name]) => {
-          const cost = skillCost(SKILL_META[key].cost, P.cafSave);
+        ).map(([key, meta]) => {
+          const cost = skillCost(meta.cost, P.cafSave);
+          const branch = state.evo[key];
+          const ev = branch === "A" ? meta.a : meta.b;
           const locked =
             state.cd[key] > 0 ||
             state.caffeine < cost ||
@@ -2447,45 +2588,46 @@ function CombatView({
               type="button"
               disabled={locked}
               onClick={() => dispatch({ type: "CAST", skill: key })}
-              className="rounded-xl border border-zinc-800 bg-zinc-900 px-2 py-2 text-left disabled:opacity-40"
+              className="office-card rounded-xl px-3 py-2.5 text-left disabled:opacity-40"
             >
-              <p className="text-[11px] font-semibold text-sky-300">{name}</p>
-              <p className="mt-1 text-[10px] text-zinc-500">
-                {state.cd[key] > 0 ? `쿨 ${state.cd[key]}턴` : `카페인 ${cost}`}
+              <p className="text-sm font-semibold text-[#7ec8e3]">{ev.name}</p>
+              <p className="mt-0.5 text-xs text-[#8a8170]">{meta.name}</p>
+              <p className="mt-1 text-xs text-[#c4bba8]">
+                {state.cd[key] > 0 ? `쿨타임 ${state.cd[key]}턴` : `카페인 ${cost}`}
               </p>
             </button>
           );
         })}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-2 py-2">
-          <p className="text-[11px] font-semibold text-zinc-300">메신저 읽씹</p>
-          <p className="mt-1 text-[10px] text-zinc-500">패시브 · 회피 {P.dodge.toFixed(1)}%</p>
-        </div>
       </section>
 
-      <div className="flex flex-wrap gap-1.5 text-[10px]">
-        {state.statuses.burnout > 0 && (
-          <span className="rounded bg-rose-950 px-2 py-0.5 text-rose-300">
-            번아웃 {state.statuses.burnout}
+      <div className="office-card flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 text-sm">
+        <p className="font-semibold text-[#e8e0d2]">{readEvo.name}</p>
+        <p className="text-xs text-[#8a8170]">패시브 · 회피 {P.dodge.toFixed(1)}%</p>
+        <div className="ml-auto flex flex-wrap gap-1.5 text-xs">
+          {state.statuses.burnout > 0 && (
+            <span className="rounded bg-[#3a1512] px-2 py-0.5 text-[#f0a090]">
+              번아웃 {state.statuses.burnout}
+            </span>
+          )}
+          {state.statuses.silence > 0 && (
+            <span className="rounded bg-[#2a2722] px-2 py-0.5 text-[#c4bba8]">
+              결재 반려 {state.statuses.silence}
+            </span>
+          )}
+          {state.statuses.sleep > 0 && (
+            <span className="rounded bg-[#163040] px-2 py-0.5 text-[#7ec8e3]">
+              수면 부족 {state.statuses.sleep}
+            </span>
+          )}
+          {state.reflectTurns > 0 && (
+            <span className="rounded bg-[#163024] px-2 py-0.5 text-[#3dcc8a]">
+              반사 {state.reflectTurns}
+            </span>
+          )}
+          <span className="text-[#8a8170]">
+            {state.level}년차 · 처치 {fmt(state.killCountRun)}
           </span>
-        )}
-        {state.statuses.silence > 0 && (
-          <span className="rounded bg-zinc-800 px-2 py-0.5 text-zinc-300">
-            결재 반려 {state.statuses.silence}
-          </span>
-        )}
-        {state.statuses.sleep > 0 && (
-          <span className="rounded bg-sky-950 px-2 py-0.5 text-sky-300">
-            수면 부족 {state.statuses.sleep}
-          </span>
-        )}
-        {state.reflectTurns > 0 && (
-          <span className="rounded bg-emerald-950 px-2 py-0.5 text-emerald-300">
-            반사 {state.reflectTurns}
-          </span>
-        )}
-        <span className="ml-auto text-zinc-600">
-          {state.level}년차 · 처치 {fmt(state.killCountRun)}
-        </span>
+        </div>
       </div>
     </div>
   );
@@ -2500,28 +2642,32 @@ function SpecView({
   P: Derived;
   dispatch: Dispatch<Action>;
 }) {
+  const build = [
+    SKILL_META.nod[state.evo.nod === "A" ? "a" : "b"].name,
+    SKILL_META.shotgun[state.evo.shotgun === "A" ? "a" : "b"].name,
+    SKILL_META.read[state.evo.read === "A" ? "a" : "b"].name,
+    SKILL_META.resign[state.evo.resign === "A" ? "a" : "b"].name,
+  ].join(" · ");
+
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">김대리 {state.level}년차</h2>
-          <span className="text-xs text-emerald-400">잔여 포인트 {state.unspent}</span>
+      <section className="office-card rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">김대리 {state.level}년차</h2>
+          <span className="text-sm text-[#3dcc8a]">잔여 포인트 {state.unspent}</span>
         </div>
-        <div className="mt-2">
+        <p className="mt-1 text-xs leading-relaxed text-[#8a8170]">{build}</p>
+        <div className="mt-3">
           <Bar
             label="경험치"
             value={state.exp}
             max={xpToNext(state.level)}
-            color="bg-emerald-400"
+            color="bg-[#3dcc8a]"
           />
         </div>
-        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-400 sm:grid-cols-4">
-          <div>
-            공격 {fmt(P.atk)}
-          </div>
-          <div>
-            방어 {fmt(P.def)}
-          </div>
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-[#c4bba8] sm:grid-cols-4">
+          <div>공격 {fmt(P.atk)}</div>
+          <div>방어 {fmt(P.def)}</div>
           <div>치명 {P.crit.toFixed(1)}%</div>
           <div>회피 {P.dodge.toFixed(1)}%</div>
         </dl>
@@ -2532,27 +2678,24 @@ function SpecView({
           const meta = STAT_INFO[key];
           const Icon = meta.icon;
           return (
-            <div
-              key={key}
-              className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-3"
-            >
-              <Icon className="mt-0.5 h-4 w-4 text-emerald-400" />
+            <div key={key} className="office-card flex items-start gap-3 rounded-xl p-3">
+              <Icon className="mt-0.5 h-4 w-4 text-[#3dcc8a]" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold">
                     {meta.name}{" "}
-                    <span className="font-mono text-zinc-400">{state.stats[key]}</span>
+                    <span className="font-mono text-[#c4bba8]">{state.stats[key]}</span>
                   </p>
                   <button
                     type="button"
                     disabled={state.unspent <= 0}
                     onClick={() => dispatch({ type: "ALLOC", stat: key })}
-                    className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs text-emerald-300 disabled:opacity-30"
+                    className="rounded-md bg-[#163024] px-2.5 py-1 text-sm text-[#3dcc8a] disabled:opacity-30"
                   >
                     +
                   </button>
                 </div>
-                <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">{meta.desc}</p>
+                <p className="mt-1 text-xs leading-relaxed text-[#8a8170]">{meta.desc}</p>
               </div>
             </div>
           );
@@ -2560,7 +2703,7 @@ function SpecView({
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-zinc-200">스킬 진화 — 언제든 무료 전환</h3>
+        <h3 className="text-sm font-semibold text-[#f4efe6]">스킬 분기 — 언제든 무료 전환</h3>
         {(
           [
             ["nod", "영혼 없는 끄덕임"],
@@ -2572,8 +2715,8 @@ function SpecView({
           const meta = SKILL_META[key];
           const cur = state.evo[key];
           return (
-            <div key={key} className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-              <p className="text-sm font-semibold text-sky-300">{title}</p>
+            <div key={key} className="office-card rounded-xl p-3">
+              <p className="text-sm font-semibold text-[#7ec8e3]">{title}</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {(["A", "B"] as const).map((br) => {
                   const ev = br === "A" ? meta.a : meta.b;
@@ -2582,14 +2725,14 @@ function SpecView({
                       key={br}
                       type="button"
                       onClick={() => dispatch({ type: "SET_EVO", skill: key, branch: br })}
-                      className={`rounded-lg border p-2 text-left ${
+                      className={`rounded-lg border p-2.5 text-left ${
                         cur === br
-                          ? "border-emerald-600 bg-emerald-950/50"
-                          : "border-zinc-800 bg-zinc-950"
+                          ? "border-[#3dcc8a] bg-[#163024]/70"
+                          : "border-[#3d362c] bg-black/20"
                       }`}
                     >
-                      <p className="text-xs font-semibold">{ev.name}</p>
-                      <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">{ev.desc}</p>
+                      <p className="text-sm font-semibold">{ev.name}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-[#8a8170]">{ev.desc}</p>
                     </button>
                   );
                 })}
@@ -2614,31 +2757,38 @@ function BagView({
   onForge: (id: string) => void;
 }) {
   const equippedIds = new Set(Object.values(state.equipped));
+  const [bulkTarget, setBulkTarget] = useState<Grade | null>(null);
+  const sorted = [...state.inventory].sort((a, b) => {
+    const ae = equippedIds.has(a.id) ? 0 : 1;
+    const be = equippedIds.has(b.id) ? 0 : 1;
+    if (ae !== be) return ae - be;
+    return b.grade - a.grade || b.stars - a.stars;
+  });
+
   return (
     <div className="space-y-3">
       <section className="grid gap-2 sm:grid-cols-3">
         {(["weapon", "armor", "accessory"] as Slot[]).map((slot) => {
           const it = findItem(state, state.equipped[slot]);
-          const label = slot === "weapon" ? "무기" : slot === "armor" ? "방어구" : "장신구";
           return (
-            <div key={slot} className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-              <p className="text-[10px] text-zinc-500">{label}</p>
+            <div key={slot} className="office-card rounded-xl p-3">
+              <p className="text-xs text-[#8a8170]">{slotLabel(slot)}</p>
               {it ? (
                 <>
                   <p className={`mt-1 text-sm font-semibold ${GRADE_META[it.grade].color}`}>
                     [{GRADE_META[it.grade].name}] {it.name}
                   </p>
-                  <p className="text-[11px] text-amber-300">{it.stars}성</p>
+                  <p className="text-xs text-[#e4b84a]">{it.stars}성</p>
                   <button
                     type="button"
-                    className="mt-2 text-[11px] text-zinc-500 underline"
+                    className="mt-2 text-xs text-[#8a8170] underline"
                     onClick={() => dispatch({ type: "UNEQUIP", slot })}
                   >
                     해제
                   </button>
                 </>
               ) : (
-                <p className="mt-1 text-xs text-zinc-600">빈 슬롯</p>
+                <p className="mt-1 text-sm text-[#8a8170]">빈 슬롯</p>
               )}
             </div>
           );
@@ -2650,41 +2800,53 @@ function BagView({
           <button
             key={g}
             type="button"
-            onClick={() => dispatch({ type: "BULK_SELL", grade: g })}
-            className={`rounded-md border border-zinc-800 px-2 py-1 text-[10px] ${GRADE_META[g].color}`}
+            onClick={() => {
+              if (g >= 4) setBulkTarget(g);
+              else dispatch({ type: "BULK_SELL", grade: g });
+            }}
+            className={`rounded-md border border-[#3d362c] px-2 py-1 text-xs ${GRADE_META[g].color}`}
           >
             {GRADE_META[g].name} 일괄판매
           </button>
         ))}
       </div>
-      <p className="text-[11px] text-zinc-500">
-        서류가방 {state.inventory.length}/{INV_CAP} · 스타포스는 장비를 눌러 개조소로
+      <p className="text-xs text-[#8a8170]">
+        서류가방 {state.inventory.length}/{INV_CAP} · 장착 장비가 위에 모입니다
       </p>
 
+      {sorted.length === 0 && (
+        <div className="office-card rounded-xl p-6 text-center text-sm text-[#8a8170]">
+          서류가방이 비어 있습니다. 전투에서 장비가 떨어집니다.
+        </div>
+      )}
+
       <ul className="space-y-2">
-        {state.inventory.map((it) => {
+        {sorted.map((it) => {
           const on = equippedIds.has(it.id);
           const st = itemStats(it);
           return (
             <li
               key={it.id}
-              className="rounded-xl border border-zinc-800 bg-zinc-900 p-3"
+              className={`office-card rounded-xl p-3 ${on ? "ring-1 ring-[#3dcc8a]/50" : ""}`}
             >
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <p className={`text-sm font-semibold ${GRADE_META[it.grade].color}`}>
                     [{GRADE_META[it.grade].name}] {it.name}{" "}
-                    <span className="text-amber-300">{it.stars}성</span>
-                    {on && <span className="ml-1 text-[10px] text-emerald-400">장착</span>}
+                    <span className="text-[#e4b84a]">{it.stars}성</span>
+                    {on && (
+                      <span className="ml-1 text-[11px] text-[#3dcc8a]">장착</span>
+                    )}
                     {it.chanceTime && (
-                      <span className="ml-1 text-[10px] text-amber-300">찬스타임</span>
+                      <span className="ml-1 text-[11px] text-[#e4b84a]">찬스타임</span>
                     )}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">
-                    ATK {fmt(st.atk)} · DEF {fmt(st.def)} · HP {fmt(st.hp)} · {it.dropFloor}F 드롭
+                  <p className="mt-0.5 text-xs text-[#8a8170]">
+                    {slotLabel(it.slot)} · 공격 {fmt(st.atk)} · 방어 {fmt(st.def)} · 멘탈{" "}
+                    {fmt(st.hp)} · {it.dropFloor}F
                   </p>
                   {it.affixes.length > 0 && (
-                    <p className="mt-1 text-[11px] text-sky-400/80">
+                    <p className="mt-1 text-xs text-[#7ec8e3]/90">
                       {it.affixes.map(affixText).join(" · ")}
                     </p>
                   )}
@@ -2694,7 +2856,7 @@ function BagView({
                 {!on && (
                   <button
                     type="button"
-                    className="rounded-md bg-emerald-700 px-2 py-1 text-[11px]"
+                    className="rounded-md bg-[#163024] px-2.5 py-1 text-xs text-[#3dcc8a]"
                     onClick={() => dispatch({ type: "EQUIP", id: it.id })}
                   >
                     장착
@@ -2702,7 +2864,7 @@ function BagView({
                 )}
                 <button
                   type="button"
-                  className="rounded-md bg-zinc-800 px-2 py-1 text-[11px]"
+                  className="rounded-md bg-black/30 px-2.5 py-1 text-xs"
                   onClick={() => onCompare(it.id)}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -2711,15 +2873,15 @@ function BagView({
                 </button>
                 <button
                   type="button"
-                  className="rounded-md bg-amber-900/80 px-2 py-1 text-[11px] text-amber-200"
+                  className="rounded-md bg-[#3a2e12] px-2.5 py-1 text-xs text-[#e4b84a]"
                   onClick={() => onForge(it.id)}
                 >
-                  스타포스
+                  강화
                 </button>
                 {!on && (
                   <button
                     type="button"
-                    className="rounded-md bg-zinc-800 px-2 py-1 text-[11px] text-zinc-400"
+                    className="rounded-md bg-black/30 px-2.5 py-1 text-xs text-[#8a8170]"
                     onClick={() => dispatch({ type: "SELL", id: it.id })}
                   >
                     판매 {fmt(sellPrice(it))}G
@@ -2730,36 +2892,103 @@ function BagView({
           );
         })}
       </ul>
+
+      {bulkTarget !== null && (
+        <Modal onClose={() => setBulkTarget(null)}>
+          <h2 className="font-semibold text-[#f0a090]">
+            [{GRADE_META[bulkTarget].name}] 일괄판매
+          </h2>
+          <p className="mt-2 text-sm text-[#c4bba8]">
+            장착 중인 장비를 제외하고 이 등급을 모두 팝니다. 되돌릴 수 없습니다.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              className="flex-1 rounded-lg bg-[#e25b4a] py-2 text-sm font-semibold text-white"
+              onClick={() => {
+                dispatch({ type: "BULK_SELL", grade: bulkTarget });
+                setBulkTarget(null);
+              }}
+            >
+              판매한다
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-lg border border-[#3d362c] py-2 text-sm"
+              onClick={() => setBulkTarget(null)}
+            >
+              취소
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-function ItemCard({ item, title }: { item: Item | null; title: string }) {
+function Delta({ label, a, b }: { label: string; a: number; b: number }) {
+  const d = b - a;
+  const cls =
+    d > 0 ? "text-[#3dcc8a]" : d < 0 ? "text-[#e25b4a]" : "text-[#8a8170]";
+  const sign = d > 0 ? "+" : "";
+  return (
+    <p className={`text-xs ${cls}`}>
+      {label} {fmt(b)}{" "}
+      {d !== 0 && (
+        <span>
+          ({sign}
+          {fmt(d)})
+        </span>
+      )}
+    </p>
+  );
+}
+
+function ItemCard({
+  item,
+  title,
+  peer,
+}: {
+  item: Item | null;
+  title: string;
+  peer?: Item | null;
+}) {
   if (!item) {
     return (
-      <div className="rounded-lg border border-zinc-800 p-3 text-zinc-600">
-        <p className="text-[10px]">{title}</p>
-        <p className="mt-2 text-xs">없음</p>
+      <div className="rounded-lg border border-[#3d362c] p-3 text-[#8a8170]">
+        <p className="text-xs">{title}</p>
+        <p className="mt-2 text-sm">없음</p>
       </div>
     );
   }
   const st = itemStats(item);
+  const peerSt = peer ? itemStats(peer) : null;
   return (
-    <div className="rounded-lg border border-zinc-800 p-3">
-      <p className="text-[10px] text-zinc-500">{title}</p>
+    <div className="rounded-lg border border-[#3d362c] p-3">
+      <p className="text-xs text-[#8a8170]">{title}</p>
       <p className={`mt-1 font-semibold ${GRADE_META[item.grade].color}`}>
         [{GRADE_META[item.grade].name}] {item.name}
       </p>
-      <p className="text-[11px] text-amber-300">{item.stars}성 · 배율 ×{starStatMult(item.stars).toFixed(2)}</p>
-      <p className="mt-2 text-[11px] text-zinc-400">
-        ATK {fmt(st.atk)}
-        <br />
-        DEF {fmt(st.def)}
-        <br />
-        HP {fmt(st.hp)}
+      <p className="text-xs text-[#e4b84a]">
+        {item.stars}성 · 배율 ×{starStatMult(item.stars).toFixed(2)}
       </p>
+      <div className="mt-2 space-y-0.5 text-sm text-[#c4bba8]">
+        {peerSt ? (
+          <>
+            <Delta label="공격" a={peerSt.atk} b={st.atk} />
+            <Delta label="방어" a={peerSt.def} b={st.def} />
+            <Delta label="멘탈" a={peerSt.hp} b={st.hp} />
+          </>
+        ) : (
+          <>
+            <p>공격 {fmt(st.atk)}</p>
+            <p>방어 {fmt(st.def)}</p>
+            <p>멘탈 {fmt(st.hp)}</p>
+          </>
+        )}
+      </div>
       {item.affixes.map((a) => (
-        <p key={a.key} className="text-[11px] text-sky-400">
+        <p key={a.key} className="text-xs text-[#7ec8e3]">
           {affixText(a)}
         </p>
       ))}
@@ -2783,35 +3012,54 @@ function StarForge({
   const cap = GRADE_META[item.grade].maxStar;
   const chance = starSuccessChance(item, union);
   const cost = starCost(item.stars, union);
-  const nextMult = starStatMult(Math.min(cap, item.stars + 1));
+  const now = itemStats(item);
+  const next =
+    item.stars < cap ? itemStats({ ...item, stars: item.stars + 1 }) : now;
   return (
     <div>
       <div className="flex items-center gap-2">
-        <Star className="h-5 w-5 text-amber-300" />
-        <h2 className="font-semibold">스타포스 25성 개조소</h2>
+        <Star className="h-5 w-5 text-[#e4b84a]" />
+        <h2 className="font-semibold">스타포스 개조소</h2>
       </div>
-      <p className="mt-1 text-xs text-zinc-500">파괴 없음. 찬스타임·억울함 스택 가동.</p>
+      <p className="mt-1 text-xs text-[#8a8170]">파괴 없음. 실패해도 장비가 사라지지 않습니다.</p>
       <p className={`mt-3 text-sm font-semibold ${GRADE_META[item.grade].color}`}>
         [{GRADE_META[item.grade].name}] {item.name}
       </p>
-      <p className="mt-1 font-mono text-2xl text-amber-300">
-        {item.stars}성 <span className="text-sm text-zinc-500">/ {cap}성</span>
+      <p className="mt-1 font-mono text-2xl text-[#e4b84a]">
+        {item.stars}성 <span className="text-sm text-[#8a8170]">/ {cap}성</span>
       </p>
       <div className="mt-2 flex flex-wrap gap-0.5">
         {Array.from({ length: cap }).map((_, i) => (
           <Star
             key={i}
-            className={`h-3.5 w-3.5 ${i < item.stars ? "text-amber-300" : "text-zinc-700"}`}
+            className={`h-3.5 w-3.5 ${i < item.stars ? "text-[#e4b84a]" : "text-[#3d362c]"}`}
           />
         ))}
       </div>
-      <ul className="mt-3 space-y-1 text-xs text-zinc-400">
-        <li>성공률 {(chance * 100).toFixed(1)}%{item.chanceTime ? " (찬스타임 확정)" : ""}</li>
-        <li>억울함 스택 {item.failStack} (+{(item.failStack * 0.5).toFixed(1)}%p)</li>
-        <li>다음 성 스탯 배율 ×{nextMult.toFixed(2)}</li>
-        <li>비용 {fmt(cost)}G · 보유 {fmt(gold)}G</li>
-        <li className="text-zinc-600">
-          0~5성 100% · 6~10성 유지 · 11~20성 세이프존 · 21~25성 극악
+      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+        <div className="rounded-lg bg-black/20 p-2">
+          <p className="text-xs text-[#8a8170]">현재</p>
+          <p>공격 {fmt(now.atk)}</p>
+          <p>방어 {fmt(now.def)}</p>
+          <p>멘탈 {fmt(now.hp)}</p>
+        </div>
+        <div className="rounded-lg bg-[#3a2e12]/40 p-2">
+          <p className="text-xs text-[#e4b84a]">다음 성</p>
+          <Delta label="공격" a={now.atk} b={next.atk} />
+          <Delta label="방어" a={now.def} b={next.def} />
+          <Delta label="멘탈" a={now.hp} b={next.hp} />
+        </div>
+      </div>
+      <ul className="mt-3 space-y-1 text-sm text-[#c4bba8]">
+        <li>
+          성공률 {(chance * 100).toFixed(1)}%{item.chanceTime ? " (찬스타임 확정)" : ""}
+        </li>
+        <li>억울함 스택 {item.failStack} (실패할수록 성공률이 조금 오릅니다)</li>
+        <li>
+          비용 {fmt(cost)}G · 보유 {fmt(gold)}G
+        </li>
+        <li className="text-xs text-[#8a8170]">
+          0~5성 무조건 성공 · 15·20성은 하락 없음 · 21성부터 실패 시 1성 하락
         </li>
       </ul>
       <div className="mt-4 flex gap-2">
@@ -2819,14 +3067,14 @@ function StarForge({
           type="button"
           disabled={gold < cost || item.stars >= cap}
           onClick={onStar}
-          className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-zinc-950 disabled:opacity-40"
+          className="flex-1 rounded-lg bg-[#e4b84a] py-2.5 text-sm font-semibold text-[#141210] disabled:opacity-40"
         >
           강화한다
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm"
+          className="rounded-lg border border-[#3d362c] px-4 py-2 text-sm"
         >
           닫기
         </button>
@@ -2845,22 +3093,25 @@ function LoopView({
   onWipe: () => void;
 }) {
   const gain = traumaGain(state);
+  const [askRebirth, setAskRebirth] = useState(false);
+  const [askDiff, setAskDiff] = useState<Difficulty | null>(null);
+
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-purple-900 bg-zinc-900 p-4">
-        <p className="text-xs text-purple-300">야근 트라우마</p>
-        <p className="font-mono text-3xl text-purple-200">{fmt(state.trauma)}</p>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-          지금 루프에서 회귀 시 획득량 {fmt(gain)} · 공식 (최고층/10)^2.2 × (1+보스처치×0.5) ×
-          난이도
+      <section className="office-card rounded-2xl border border-[#5b3d8a] p-4">
+        <p className="text-xs text-[#cbb4ff]">야근 트라우마</p>
+        <p className="font-mono text-3xl text-[#e4d7ff]">{fmt(state.trauma)}</p>
+        <p className="mt-2 text-sm leading-relaxed text-[#8a8170]">
+          지금 회귀하면 +{fmt(gain)} 획득. 장비·골드·특성은 유지되고 1층 로비로
+          돌아갑니다.
         </p>
         <button
           type="button"
-          onClick={() => dispatch({ type: "REBIRTH" })}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-purple-700 py-2 text-sm font-semibold"
+          onClick={() => setAskRebirth(true)}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[#6b4aa8] py-2.5 text-sm font-semibold"
         >
           <RotateCcw className="h-4 w-4" />
-          번아웃 타임루프 (1층으로)
+          번아웃 타임루프
         </button>
       </section>
 
@@ -2873,21 +3124,21 @@ function LoopView({
           return (
             <div
               key={key}
-              className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900 p-3"
+              className="office-card flex items-start gap-3 rounded-xl p-3"
             >
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">
                   {meta.name}{" "}
-                  <span className="font-mono text-zinc-500">Lv.{lv}</span>
+                  <span className="font-mono text-[#8a8170]">Lv.{lv}</span>
                 </p>
-                <p className="mt-0.5 text-[11px] text-zinc-500">{meta.desc}</p>
-                <p className="mt-1 text-[11px] text-emerald-400">{meta.effect(lv)}</p>
+                <p className="mt-0.5 text-xs text-[#8a8170]">{meta.desc}</p>
+                <p className="mt-1 text-xs text-[#3dcc8a]">{meta.effect(lv)}</p>
               </div>
               <button
                 type="button"
                 disabled={state.trauma < cost}
                 onClick={() => dispatch({ type: "BUY_PERK", key })}
-                className="shrink-0 rounded-md bg-purple-800 px-2 py-1 text-[11px] disabled:opacity-30"
+                className="shrink-0 rounded-md bg-[#3a2a58] px-2.5 py-1 text-xs disabled:opacity-30"
               >
                 {fmt(cost)}
               </button>
@@ -2898,6 +3149,9 @@ function LoopView({
 
       <section>
         <h3 className="text-sm font-semibold">난이도 확장</h3>
+        <p className="mt-1 text-xs text-[#8a8170]">
+          난이도를 바꾸면 현재 층 진행이 1층부터 다시 시작됩니다.
+        </p>
         <div className="mt-2 grid grid-cols-2 gap-2">
           {(Object.keys(DIFF_LABEL) as Difficulty[]).map((d) => {
             const open = state.unlocked[d];
@@ -2906,38 +3160,103 @@ function LoopView({
                 key={d}
                 type="button"
                 disabled={!open}
-                onClick={() => dispatch({ type: "SET_DIFFICULTY", difficulty: d })}
+                onClick={() => {
+                  if (d === state.difficulty) return;
+                  setAskDiff(d);
+                }}
                 className={`rounded-xl border p-3 text-left ${
                   state.difficulty === d
                     ? DIFF_STYLE[d]
-                    : "border-zinc-800 bg-zinc-900 text-zinc-400"
+                    : "border-[#3d362c] bg-[#1c1a16] text-[#c4bba8]"
                 } disabled:opacity-30`}
               >
                 <p className="text-sm font-semibold">{DIFF_LABEL[d]}</p>
-                <p className="mt-1 text-[11px] opacity-80">
+                <p className="mt-1 text-xs opacity-80">
                   배율 ×{DIFF_MULT[d]} · 최고 {state.highest[d]}F · 루프{" "}
                   {state.loopCount[d]}
                 </p>
-                {!open && <p className="mt-1 text-[10px]">이전 난이도 100F 클리어 필요</p>}
+                {!open && (
+                  <p className="mt-1 text-[11px]">이전 난이도 100F 클리어 필요</p>
+                )}
               </button>
             );
           })}
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-800 p-3 text-xs text-zinc-500">
-        <p>이번 루프 처치 {fmt(state.killCountRun)} · 보스 {state.bossKillsRun}</p>
+      <section className="office-card rounded-xl p-3 text-sm text-[#8a8170]">
+        <p>
+          이번 루프 처치 {fmt(state.killCountRun)} · 보스 {state.bossKillsRun}
+        </p>
         <p className="mt-1">
-          단순 방치로는 20층 보스를 넘기기 어렵습니다. 스타포스·특성·파밍을 병행하세요.
+          20층 보스 전후부터는 강화와 파밍을 병행하는 편이 안전합니다.
         </p>
         <button
           type="button"
           onClick={onWipe}
-          className="mt-3 flex items-center gap-1 text-rose-500"
+          className="mt-3 flex items-center gap-1 text-[#e25b4a]"
         >
           <Trash2 className="h-3.5 w-3.5" /> 세이브 삭제
         </button>
       </section>
+
+      {askRebirth && (
+        <Modal onClose={() => setAskRebirth(false)}>
+          <h2 className="font-semibold">1층으로 회귀할까요?</h2>
+          <p className="mt-2 text-sm leading-relaxed text-[#c4bba8]">
+            현재 {state.floor}층 진행이 초기화됩니다. 야근 트라우마{" "}
+            <span className="font-mono text-[#cbb4ff]">+{fmt(gain)}</span>을 얻고
+            장비는 유지됩니다.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              className="flex-1 rounded-lg bg-[#6b4aa8] py-2 text-sm font-semibold"
+              onClick={() => {
+                dispatch({ type: "REBIRTH" });
+                setAskRebirth(false);
+              }}
+            >
+              회귀한다
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-lg border border-[#3d362c] py-2 text-sm"
+              onClick={() => setAskRebirth(false)}
+            >
+              취소
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {askDiff && (
+        <Modal onClose={() => setAskDiff(null)}>
+          <h2 className="font-semibold">난이도를 [{DIFF_LABEL[askDiff]}](으)로?</h2>
+          <p className="mt-2 text-sm text-[#c4bba8]">
+            1층부터 다시 등반합니다. 장비·골드·특성은 그대로입니다.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              className="flex-1 rounded-lg bg-[#e4b84a] py-2 text-sm font-semibold text-[#141210]"
+              onClick={() => {
+                dispatch({ type: "SET_DIFFICULTY", difficulty: askDiff });
+                setAskDiff(null);
+              }}
+            >
+              변경한다
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-lg border border-[#3d362c] py-2 text-sm"
+              onClick={() => setAskDiff(null)}
+            >
+              취소
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
