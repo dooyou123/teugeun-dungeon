@@ -1904,6 +1904,8 @@ export default function App() {
     ? `${state.floor}:${state.killCountRun}:${state.logSeq}`
     : null;
   const deadPeek = Boolean(state.dead && peekDeathId === deathId);
+  const deathModalOpen = Boolean(state.dead && !deadPeek && tab === "combat");
+  const deathBannerOpen = Boolean(state.dead && !deathModalOpen);
   const saveTimer = useRef<number | null>(null);
 
   const P = useMemo(() => derive(state), [state]);
@@ -2283,11 +2285,14 @@ export default function App() {
         </Modal>
       )}
 
-      {state.dead && deadPeek && (
+      {deathBannerOpen && (
         <div className="fixed bottom-[4.25rem] left-1/2 z-40 w-full max-w-3xl -translate-x-1/2 px-3 lg:max-w-5xl">
           <button
             type="button"
-            onClick={() => setPeekDeathId(null)}
+            onClick={() => {
+              setTab("combat");
+              setPeekDeathId(null);
+            }}
             className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#e25b4a]/60 bg-[#3a1512] px-3 py-2 text-sm text-[#f0a090]"
           >
             <span>멘탈 붕괴 — 1층으로 돌아가려면 지문을 다시 찍으세요.</span>
@@ -2296,7 +2301,7 @@ export default function App() {
         </div>
       )}
 
-      {state.dead && !deadPeek && (
+      {deathModalOpen && (
         <Modal>
           <Skull className="h-8 w-8 text-[#e25b4a]" />
           <h2 className="mt-2 text-lg font-bold">멘탈 붕괴 — 번아웃 타임루프</h2>
